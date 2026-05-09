@@ -127,7 +127,7 @@ function Home() {
       {/* TESTIMONIALS */}
       <section id="yorumlar" className="py-24 bg-background">
         <div className="container mx-auto px-6">
-          <SectionHead eyebrow="Müşteri Yorumları" title="Mersinlilerin Güvendiği Çekici" />
+          <SectionHead eyebrow="Yorumlar" title="Müşteri Yorumlarımız" />
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 mt-12">
             {TESTIMONIALS.map((t, i) => (
               <article key={i} className="rounded-2xl bg-card border border-border p-6 shadow-card hover:border-primary/40 transition-colors">
