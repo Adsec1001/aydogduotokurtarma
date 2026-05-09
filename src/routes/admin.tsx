@@ -1,7 +1,9 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState, type FormEvent } from "react";
+import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
-import { LogOut, Upload, Trash2, ArrowLeft } from "lucide-react";
+import { adminVerify, adminUpload, adminDelete } from "@/lib/admin.functions";
+import { LogOut, Upload, Trash2, ArrowLeft, Lock } from "lucide-react";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/admin")({
@@ -9,67 +11,89 @@ export const Route = createFileRoute("/admin")({
   head: () => ({ meta: [{ title: "Yönetim · Aydoğdu Oto Kurtarma" }, { name: "robots", content: "noindex,nofollow" }] }),
 });
 
+const PW_KEY = "aydogdu_admin_pw";
 type GalleryRow = { id: string; image_url: string; caption: string | null };
 
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result as string;
+      resolve(result.split(",")[1] || "");
+    };
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+}
+
 function Admin() {
-  const [loading, setLoading] = useState(true);
-  const [userId, setUserId] = useState<string | null>(null);
-  const [isAdmin, setIsAdmin] = useState(false);
+  const verifyFn = useServerFn(adminVerify);
+  const uploadFn = useServerFn(adminUpload);
+  const deleteFn = useServerFn(adminDelete);
+
+  const [password, setPassword] = useState<string | null>(null);
+  const [pwInput, setPwInput] = useState("");
+  const [checking, setChecking] = useState(true);
   const [gallery, setGallery] = useState<GalleryRow[]>([]);
   const [uploading, setUploading] = useState(false);
   const [caption, setCaption] = useState("");
 
-  // login form
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-
   const refresh = async () => {
-    const { data } = await supabase.from("gallery_images").select("id,image_url,caption").order("created_at", { ascending: false });
+    const { data } = await supabase
+      .from("gallery_images")
+      .select("id,image_url,caption")
+      .order("created_at", { ascending: false });
     setGallery(data ?? []);
   };
 
   useEffect(() => {
-    const init = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session?.user) {
-        setUserId(session.user.id);
-        const { data: roleData } = await supabase.from("user_roles").select("role").eq("user_id", session.user.id).eq("role", "admin").maybeSingle();
-        setIsAdmin(!!roleData);
+    const stored = typeof window !== "undefined" ? sessionStorage.getItem(PW_KEY) : null;
+    if (!stored) {
+      setChecking(false);
+      return;
+    }
+    verifyFn({ data: { password: stored } })
+      .then(async () => {
+        setPassword(stored);
         await refresh();
-      }
-      setLoading(false);
-    };
-    init();
-    const { data: sub } = supabase.auth.onAuthStateChange((_e, session) => {
-      setUserId(session?.user?.id ?? null);
-    });
-    return () => sub.subscription.unsubscribe();
+      })
+      .catch(() => sessionStorage.removeItem(PW_KEY))
+      .finally(() => setChecking(false));
   }, []);
 
   const handleLogin = async (e: FormEvent) => {
     e.preventDefault();
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) return toast.error(error.message);
-    toast.success("Giriş başarılı");
-    window.location.reload();
+    try {
+      await verifyFn({ data: { password: pwInput } });
+      sessionStorage.setItem(PW_KEY, pwInput);
+      setPassword(pwInput);
+      toast.success("Giriş başarılı");
+      await refresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Giriş başarısız");
+    }
   };
 
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
-    window.location.reload();
+  const handleLogout = () => {
+    sessionStorage.removeItem(PW_KEY);
+    setPassword(null);
+    setPwInput("");
   };
 
   const handleUpload = async (file: File) => {
-    if (!file) return;
+    if (!file || !password) return;
     setUploading(true);
     try {
-      const ext = file.name.split(".").pop();
-      const path = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
-      const { error: upErr } = await supabase.storage.from("gallery").upload(path, file);
-      if (upErr) throw upErr;
-      const { data: { publicUrl } } = supabase.storage.from("gallery").getPublicUrl(path);
-      const { error: insErr } = await supabase.from("gallery_images").insert({ image_url: publicUrl, caption: caption || null });
-      if (insErr) throw insErr;
+      const fileBase64 = await fileToBase64(file);
+      await uploadFn({
+        data: {
+          password,
+          fileBase64,
+          filename: file.name,
+          contentType: file.type || "image/jpeg",
+          caption: caption || null,
+        },
+      });
       toast.success("Görsel eklendi");
       setCaption("");
       await refresh();
@@ -81,41 +105,46 @@ function Admin() {
   };
 
   const handleDelete = async (row: GalleryRow) => {
+    if (!password) return;
     if (!confirm("Görsel silinsin mi?")) return;
-    const path = row.image_url.split("/gallery/")[1];
-    if (path) await supabase.storage.from("gallery").remove([path]);
-    await supabase.from("gallery_images").delete().eq("id", row.id);
-    toast.success("Silindi");
-    await refresh();
+    try {
+      await deleteFn({ data: { password, id: row.id, imageUrl: row.image_url } });
+      toast.success("Silindi");
+      await refresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Silme hatası");
+    }
   };
 
-  if (loading) return <div className="min-h-screen flex items-center justify-center text-muted-foreground">Yükleniyor...</div>;
+  if (checking) {
+    return <div className="min-h-screen flex items-center justify-center text-muted-foreground">Yükleniyor...</div>;
+  }
 
-  if (!userId) {
+  if (!password) {
     return (
       <div className="min-h-screen flex items-center justify-center px-4 bg-background">
         <form onSubmit={handleLogin} className="w-full max-w-sm bg-card border border-border rounded-2xl p-8 shadow-card">
+          <div className="h-12 w-12 rounded-xl bg-gradient-amber flex items-center justify-center shadow-glow mb-4">
+            <Lock className="h-6 w-6 text-primary-foreground" />
+          </div>
           <h1 className="text-2xl font-bold mb-1">Yönetim Girişi</h1>
-          <p className="text-sm text-muted-foreground mb-6">Sadece yetkili kullanıcılar.</p>
-          <label className="block text-sm font-medium mb-1">E-posta</label>
-          <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} className="w-full mb-4 rounded-lg bg-input border border-border px-3 py-2 text-foreground" />
+          <p className="text-sm text-muted-foreground mb-6">Devam etmek için şifrenizi girin.</p>
           <label className="block text-sm font-medium mb-1">Şifre</label>
-          <input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} className="w-full mb-6 rounded-lg bg-input border border-border px-3 py-2 text-foreground" />
-          <button type="submit" className="w-full rounded-lg bg-gradient-amber py-2.5 font-semibold text-primary-foreground shadow-glow">Giriş Yap</button>
-          <Link to="/" className="mt-4 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-primary"><ArrowLeft className="h-3 w-3" /> Siteye dön</Link>
+          <input
+            type="password"
+            required
+            autoFocus
+            value={pwInput}
+            onChange={(e) => setPwInput(e.target.value)}
+            className="w-full mb-6 rounded-lg bg-input border border-border px-3 py-2 text-foreground"
+          />
+          <button type="submit" className="w-full rounded-lg bg-gradient-amber py-2.5 font-semibold text-primary-foreground shadow-glow">
+            Giriş Yap
+          </button>
+          <Link to="/" className="mt-4 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-primary">
+            <ArrowLeft className="h-3 w-3" /> Siteye dön
+          </Link>
         </form>
-      </div>
-    );
-  }
-
-  if (!isAdmin) {
-    return (
-      <div className="min-h-screen flex items-center justify-center px-4 bg-background text-center">
-        <div className="max-w-md">
-          <h1 className="text-2xl font-bold mb-2">Yetkisiz Erişim</h1>
-          <p className="text-muted-foreground mb-6">Hesabınız admin olarak tanımlanmamış. Sahip kişiyle iletişime geçin.</p>
-          <button onClick={handleLogout} className="rounded-lg bg-secondary px-4 py-2 text-sm">Çıkış Yap</button>
-        </div>
       </div>
     );
   }
