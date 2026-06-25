@@ -77,15 +77,11 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { name: "description", content: "Mersin ve çevresinde 7/24 oto kurtarma, yol yardım ve araç çekme hizmeti. Hızlı, güvenilir ve uygun fiyatlı çekici hizmeti için Aydoğdu Oto Kurtarma'yı arayın." },
       { name: "keywords", content: "oto kurtarma mersin, çekici mersin, yol yardım mersin, aydoğdu oto kurtarma, 7/24 çekici" },
       { name: "author", content: "Aydoğdu Oto Kurtarma" },
-      { property: "og:title", content: "Aydoğdu Oto Kurtarma — Mersin 7/24 Yol Yardım & Çekici" },
-      { property: "og:description", content: "Mersin ve çevresinde 7/24 oto kurtarma, yol yardım ve araç çekme hizmeti. Hızlı, güvenilir ve uygun fiyatlı çekici hizmeti için Aydoğdu Oto Kurtarma'yı arayın." },
+      { property: "og:title", content: "Aydoğdu Oto Kurtarma — Mersin 7/24 Çekici" },
+      { property: "og:description", content: "Mersin'de 7/24 oto kurtarma ve yol yardım hizmeti." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
       { name: "twitter:site", content: "@Lovable" },
-      { name: "twitter:title", content: "Aydoğdu Oto Kurtarma — Mersin 7/24 Yol Yardım & Çekici" },
-      { name: "twitter:description", content: "Mersin ve çevresinde 7/24 oto kurtarma, yol yardım ve araç çekme hizmeti. Hızlı, güvenilir ve uygun fiyatlı çekici hizmeti için Aydoğdu Oto Kurtarma'yı arayın." },
-      { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/8d329932-d015-4b46-b5d3-1a7cb96e2c88/id-preview-78493ac2--acd2e281-76d6-465e-ac6a-d9c9cebfe6f7.lovable.app-1778314116764.png" },
-      { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/8d329932-d015-4b46-b5d3-1a7cb96e2c88/id-preview-78493ac2--acd2e281-76d6-465e-ac6a-d9c9cebfe6f7.lovable.app-1778314116764.png" },
     ],
     links: [
       {
