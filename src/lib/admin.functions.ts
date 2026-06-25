@@ -1,5 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
+import { getRequestHeader } from "@tanstack/react-start/server";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 
 const TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hour
@@ -18,8 +19,6 @@ const attempts = new Map<string, Attempt>();
 
 function getClientIp(): string {
   try {
-    // dynamic to avoid SSR issues during module load
-    const { getRequestHeader } = require("@tanstack/react-start/server") as typeof import("@tanstack/react-start/server");
     return (
       getRequestHeader("cf-connecting-ip") ||
       getRequestHeader("x-forwarded-for")?.split(",")[0]?.trim() ||
