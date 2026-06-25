@@ -11,7 +11,7 @@ export const Route = createFileRoute("/admin")({
   head: () => ({ meta: [{ title: "Yönetim · Aydoğdu Oto Kurtarma" }, { name: "robots", content: "noindex,nofollow" }] }),
 });
 
-const PW_KEY = "aydogdu_admin_pw";
+const TOKEN_KEY = "aydogdu_admin_token";
 type GalleryRow = { id: string; image_url: string; caption: string | null };
 
 function fileToBase64(file: File): Promise<string> {
@@ -31,7 +31,7 @@ function Admin() {
   const uploadFn = useServerFn(adminUpload);
   const deleteFn = useServerFn(adminDelete);
 
-  const [password, setPassword] = useState<string | null>(null);
+  const [token, setToken] = useState<string | null>(null);
   const [pwInput, setPwInput] = useState("");
   const [checking, setChecking] = useState(true);
   const [gallery, setGallery] = useState<GalleryRow[]>([]);
@@ -47,26 +47,23 @@ function Admin() {
   };
 
   useEffect(() => {
-    const stored = typeof window !== "undefined" ? sessionStorage.getItem(PW_KEY) : null;
+    const stored = typeof window !== "undefined" ? sessionStorage.getItem(TOKEN_KEY) : null;
     if (!stored) {
       setChecking(false);
       return;
     }
-    verifyFn({ data: { password: stored } })
-      .then(async () => {
-        setPassword(stored);
-        await refresh();
-      })
-      .catch(() => sessionStorage.removeItem(PW_KEY))
-      .finally(() => setChecking(false));
+    // Best-effort: try a no-op call to validate token by attempting a refresh; if token is expired, server calls will fail later.
+    setToken(stored);
+    refresh().finally(() => setChecking(false));
   }, []);
 
   const handleLogin = async (e: FormEvent) => {
     e.preventDefault();
     try {
-      await verifyFn({ data: { password: pwInput } });
-      sessionStorage.setItem(PW_KEY, pwInput);
-      setPassword(pwInput);
+      const res = await verifyFn({ data: { password: pwInput } });
+      sessionStorage.setItem(TOKEN_KEY, res.token);
+      setToken(res.token);
+      setPwInput("");
       toast.success("Giriş başarılı");
       await refresh();
     } catch (err) {
@@ -75,19 +72,19 @@ function Admin() {
   };
 
   const handleLogout = () => {
-    sessionStorage.removeItem(PW_KEY);
-    setPassword(null);
+    sessionStorage.removeItem(TOKEN_KEY);
+    setToken(null);
     setPwInput("");
   };
 
   const handleUpload = async (file: File) => {
-    if (!file || !password) return;
+    if (!file || !token) return;
     setUploading(true);
     try {
       const fileBase64 = await fileToBase64(file);
       await uploadFn({
         data: {
-          password,
+          token,
           fileBase64,
           filename: file.name,
           contentType: file.type || "image/jpeg",
@@ -98,21 +95,25 @@ function Admin() {
       setCaption("");
       await refresh();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Yükleme hatası");
+      const msg = err instanceof Error ? err.message : "Yükleme hatası";
+      toast.error(msg);
+      if (msg.includes("Oturum")) handleLogout();
     } finally {
       setUploading(false);
     }
   };
 
   const handleDelete = async (row: GalleryRow) => {
-    if (!password) return;
+    if (!token) return;
     if (!confirm("Görsel silinsin mi?")) return;
     try {
-      await deleteFn({ data: { password, id: row.id, imageUrl: row.image_url } });
+      await deleteFn({ data: { token, id: row.id, imageUrl: row.image_url } });
       toast.success("Silindi");
       await refresh();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Silme hatası");
+      const msg = err instanceof Error ? err.message : "Silme hatası";
+      toast.error(msg);
+      if (msg.includes("Oturum")) handleLogout();
     }
   };
 
@@ -120,7 +121,7 @@ function Admin() {
     return <div className="min-h-screen flex items-center justify-center text-muted-foreground">Yükleniyor...</div>;
   }
 
-  if (!password) {
+  if (!token) {
     return (
       <div className="min-h-screen flex items-center justify-center px-4 bg-background">
         <form onSubmit={handleLogin} className="w-full max-w-sm bg-card border border-border rounded-2xl p-8 shadow-card">
